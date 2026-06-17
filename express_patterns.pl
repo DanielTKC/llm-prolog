@@ -14,6 +14,7 @@ clear_routes :-
     retractall(route(_,_,_,_)).
 
 middleware(auth,'authenticate').
+middleware(paginated, 'paginate').
 
 
 middleware_chain(Name, Chain) :-
