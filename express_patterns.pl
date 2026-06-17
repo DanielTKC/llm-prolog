@@ -3,7 +3,8 @@
     assert_route/1,
     clear_routes/0,
     middleware/2,
-    middleware_chain/2
+    middleware_chain/2,
+    generate_route/2
 ]).
 
 :- dynamic route/4.
@@ -23,3 +24,13 @@ middleware(validated(Schema), Mw) :-
 middleware_chain(Name, Chain) :-
     route(Name, _Method, _Path, Features),
     findall(Mw, (member(F, Features), middleware(F, Mw)), Chain).
+
+generate_route(Name, Code) :-
+    route(Name, Method, Path, _Features),
+    middleware_chain(Name, Chain),
+    format(atom(HandlerAtom), '~wHandler', [Name]),
+    append(Chain, [HandlerAtom], CallArgs),
+    atomic_list_concat(CallArgs, ', ', ArgsAtom),
+    format(string(Code),
+           "router.~w('~w', ~w);",
+           [Method, Path, ArgsAtom]).
