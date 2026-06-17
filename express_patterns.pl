@@ -19,6 +19,8 @@ middleware(paginated, 'paginate').
 middleware(file_upload, 'upload.single("file")').
 middleware(validated(Schema), Mw) :-
     format(atom(Mw), 'validate(~w)', [Schema]).
+middleware(admin_only, 'requireAdmin').
+
 
 
 middleware_chain(Name, Chain) :-
