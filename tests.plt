@@ -19,4 +19,32 @@ test(empty_features_empty_chain) :-
     Chain == [].
 :- end_tests(middleware_chain).
 
+% Runnin routes
+:- begin_tests(generate_route,
+   [setup(setup_routes([
+       route(users_list,    get,    '/users',            [auth, paginated]),
+       route(user_create,   post,   '/users',            [auth, validated(user_schema)]),
+       route(user_delete,   delete, '/users/:id',        [auth, admin_only]),
+       route(public_ping,   get,    '/ping',             []),
+       route(upload_avatar, post,   '/users/:id/avatar', [auth, file_upload])
+   ]))]).
+
+test(no_middleware_still_renders_handler) :-
+    generate_route(public_ping, Code),
+    Code == "router.get('/ping', public_pingHandler);".
+
+test(renders_method_path_chain_and_handler) :-
+    generate_route(users_list, Code),
+    Code == "router.get('/users', authenticate, paginate, users_listHandler);".
+
+test(param_validation_renders) :-
+    generate_route(user_create, Code),
+    Code == "router.post('/users', authenticate, validate(user_schema), user_createHandler);".
+
+test(delete_with_admin_check) :-
+    generate_route(user_delete, Code),
+    Code == "router.delete('/users/:id', authenticate, requireAdmin, user_deleteHandler);".
+
+:- end_tests(generate_route).
+
 :- initialization(run_tests, main).
