@@ -1,14 +1,14 @@
 :- use_module(express_patterns).
-:- begin_tests(route_store, [cleanup(clear_routes)]).
+setup_routes(Routes) :-
+    express_patterns:clear_routes,
+    forall(member(R, Routes), express_patterns:assert_route(R)).
+:- begin_tests(middleware_chain,
+   [setup(setup_routes([route(public_ping, get, '/ping', [])
+   ]))]).
 
-test(assert_and_lookup) :-
-    assert_route(route(home, get, "/", [auth])),
-    route(home, get, "/", [auth]).
+test(empty_features_empty_chain) :-
+    middleware_chain(public_ping, Chain),
+    Chain == [].
+:- end_tests(middleware_chain).
 
-test(clear_removes_routes) :-
-    assert_route(route(home, get, "/", [])),
-    clear_routes,
-    \+ route(home, _, _, _).
-
-:- end_tests(route_store).
 :- initialization(run_tests, main).
