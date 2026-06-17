@@ -6,6 +6,8 @@ setup_routes(Routes) :-
 :- begin_tests(middleware_chain,
    [setup(setup_routes([
         route(users_list,  get, '/users', [auth, paginated]),
+        route(user_create,  post, '/users', [auth, validated(user_schema)]),
+        route(upload_avatar, post, '/users/:id/avatar', [auth, file_upload]),
         route(public_ping, get, '/ping', [])
    ]))]).
 test(simple_features_expand_in_order) :-

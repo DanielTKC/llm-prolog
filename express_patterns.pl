@@ -15,6 +15,9 @@ clear_routes :-
 
 middleware(auth,'authenticate').
 middleware(paginated, 'paginate').
+middleware(file_upload, 'upload.single("file")').
+middleware(validated(Schema), Mw) :-
+    format(atom(Mw), 'validate(~w)', [Schema]).
 
 
 middleware_chain(Name, Chain) :-
