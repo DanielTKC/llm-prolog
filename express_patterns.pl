@@ -68,3 +68,12 @@ warn(unknown_feature, Name, Msg) :-
     format(string(Msg),
            "feature ~w has no middleware mapping and would be silently dropped",
            [F]).
+
+
+warn(route_conflict, Name, Msg) :-
+    route(Name, Method, Path, _),
+    route(Other, Method, Path, _),
+    Name @< Other,
+    format(string(Msg),
+           "~w ~w also defined by ~w",
+           [Method, Path, Other]).

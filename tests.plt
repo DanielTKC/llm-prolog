@@ -86,4 +86,21 @@ test(mapped_features_are_clean) :-
 
 :- end_tests(lint_unknown_feature).
 
+:- begin_tests(lint_route_conflict,
+   [setup(setup_routes([
+       route(users_list,  get, '/users', [auth]),
+       route(users_index, get, '/users', [auth]),
+       route(public_ping, get, '/ping',  [])
+   ]))]).
+
+test(duplicate_method_and_path_warns) :-
+    express_patterns:lint(Warnings),
+    memberchk(warning(route_conflict, _, _), Warnings).
+
+test(unique_route_has_no_conflict) :-
+    express_patterns:lint(Warnings),
+    \+ memberchk(warning(route_conflict, public_ping, _), Warnings).
+
+:- end_tests(lint_route_conflict).
+
 :- initialization(run_tests, main).
