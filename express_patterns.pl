@@ -4,7 +4,8 @@
     clear_routes/0,
     middleware/2,
     middleware_chain/2,
-    generate_route/2
+    generate_route/2,
+    lint/1
 ]).
 
 :- dynamic route/4.
@@ -36,3 +37,25 @@ generate_route(Name, Code) :-
     format(string(Code),
            "router.~w('~w', ~w);",
            [Method, Path, ArgsAtom]).
+
+% lint/1 gathers every warning that fires across the route. Each
+% warning is warning(Type, RouteName, Message): the Type names the rule,
+% so a complaint can be traced back to the clause that raised it
+lint(Warnings) :-
+    findall(warning(Type, Name, Msg), warn(Type, Name, Msg), Warnings).
+
+
+mutating_method(post).
+mutating_method(put).
+mutating_method(patch).
+
+has_validation(Features) :- member(validated(_), Features).
+
+
+warn(missing_validation, Name, Msg) :-
+    route(Name, Method, Path, Features),
+    mutating_method(Method),
+    \+ has_validation(Features),
+    format(string(Msg),
+           "~w ~w has no validation; ~w bodies should be schema-checked",
+           [Method, Path, Method]).
