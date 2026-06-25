@@ -70,4 +70,20 @@ test(get_never_needs_validation) :-
 
 :- end_tests(lint_missing_validation).
 
+:- begin_tests(lint_unknown_feature,
+   [setup(setup_routes([
+       route(users_list, get,  '/users', [auth, paginated]),
+       route(bad_route,  post, '/bad',   [auth, validted(user_schema)])
+   ]))]).
+
+test(unmapped_feature_warns) :-
+    express_patterns:lint(Warnings),
+    memberchk(warning(unknown_feature, bad_route, _), Warnings).
+
+test(mapped_features_are_clean) :-
+    express_patterns:lint(Warnings),
+    \+ memberchk(warning(unknown_feature, users_list, _), Warnings).
+
+:- end_tests(lint_unknown_feature).
+
 :- initialization(run_tests, main).

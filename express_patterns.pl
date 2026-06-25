@@ -59,3 +59,12 @@ warn(missing_validation, Name, Msg) :-
     format(string(Msg),
            "~w ~w has no validation; ~w bodies should be schema-checked",
            [Method, Path, Method]).
+
+
+warn(unknown_feature, Name, Msg) :-
+    route(Name, _, _, Features),
+    member(F, Features),
+    \+ middleware(F, _),
+    format(string(Msg),
+           "feature ~w has no middleware mapping and would be silently dropped",
+           [F]).
