@@ -47,4 +47,27 @@ test(delete_with_admin_check) :-
 
 :- end_tests(generate_route).
 
+% lint/1  is for missing validations
+:- begin_tests(lint_missing_validation,
+   [setup(setup_routes([
+       route(users_list,    get,    '/users',            [auth, paginated]),
+       route(user_create,   post,   '/users',            [auth, validated(user_schema)]),
+       route(upload_avatar, post,   '/users/:id/avatar', [auth, file_upload]),
+       route(public_ping,   get,    '/ping',             [])
+   ]))]).
+
+test(post_without_validation_warns) :-
+    express_patterns:lint(Warnings),
+    memberchk(warning(missing_validation, upload_avatar, _), Warnings).
+
+test(post_with_validation_is_clean) :-
+    express_patterns:lint(Warnings),
+    \+ memberchk(warning(missing_validation, user_create, _), Warnings).
+
+test(get_never_needs_validation) :-
+    express_patterns:lint(Warnings),
+    \+ memberchk(warning(missing_validation, public_ping, _), Warnings).
+
+:- end_tests(lint_missing_validation).
+
 :- initialization(run_tests, main).
