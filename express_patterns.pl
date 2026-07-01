@@ -5,7 +5,9 @@
     middleware/2,
     middleware_chain/2,
     generate_route/2,
-    lint/1
+    lint/1,
+    suggest/1,
+    load_routes_json/1
 ]).
 
 :- dynamic route/4.
@@ -106,3 +108,27 @@ suggest_one(add_csrf, Name, Msg) :-
     format(string(Msg),
            "~w ~w changes state from a browser; add csrf protection",
            [Method, Path]).
+
+%JSON loading routes arrive like {"routes":[...]}
+feature_from_json(Feature0, Feature) :-
+    is_dict(Feature0), !,
+    dict_pairs(Feature0, _, [Key-Value]),
+    Feature =.. [Key, Value].
+feature_from_json(Feature, Feature).
+
+route_from_json(Dict, route(Name, Method, Path, Features)) :-
+    get_dict(name, Dict, Name),
+    get_dict(method, Dict, Method),
+    get_dict(path, Dict, Path),
+    get_dict(features, Dict, Features0),
+    maplist(feature_from_json, Features0, Features).
+
+load_routes_json(File) :-
+    setup_call_cleanup(
+        open(File, read, Stream),
+        json_read_dict(Stream, Doc, [value_string_as(atom)]),
+        close(Stream)),
+    get_dict(routes, Doc, RouteDicts),
+    forall(member(D, RouteDicts),
+           ( route_from_json(D, Route),
+             assert_route(Route) )).
