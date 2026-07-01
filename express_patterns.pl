@@ -77,3 +77,32 @@ warn(route_conflict, Name, Msg) :-
     format(string(Msg),
            "~w ~w also defined by ~w",
            [Method, Path, Other]).
+
+% Getting into suggestions.
+suggest(Suggestions) :-
+    findall(suggestion(Type, Name, Msg),
+            suggest_one(Type, Name, Msg),
+            Suggestions).
+
+% Paths that look like authentication endpoints.
+auth_path(Path) :- sub_atom(Path, _, _, _, login).
+auth_path(Path) :- sub_atom(Path, _, _, _, auth).
+auth_path(Path) :- sub_atom(Path, _, _, _, password).
+
+% rate limiting is cheap.
+suggest_one(add_rate_limit, Name, Msg) :-
+    route(Name, _, Path, Features),
+    auth_path(Path),
+    \+ member(rate_limited, Features),
+    format(string(Msg),
+           "~w looks like an auth endpoint; add rate_limited to slow attacks",
+           [Path]).
+
+% Changing routes reachable from a browser should carry CSRF protection
+suggest_one(add_csrf, Name, Msg) :-
+    route(Name, Method, Path, Features),
+    mutating_method(Method),
+    \+ member(csrf, Features),
+    format(string(Msg),
+           "~w ~w changes state from a browser; add csrf protection",
+           [Method, Path]).
