@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {"name": "users_list",    "method": "get",  "path": "/users",            "features": ["auth", "paginated"]},
+    {"name": "user_create",   "method": "post", "path": "/users",            "features": ["auth", {"validated": "user_schema"}, "csrf"]},
+    {"name": "upload_avatar", "method": "post", "path": "/users/:id/avatar", "features": ["auth", "file_upload"]},
+    {"name": "login",         "method": "post", "path": "/login",            "features": [{"validated": "login_schema"}]},
+    {"name": "public_ping",   "method": "get",  "path": "/ping",             "features": []}
+  ]
+}
