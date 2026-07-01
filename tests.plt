@@ -156,4 +156,30 @@ test(route_from_json_translates_features) :-
 
 :- end_tests(json_loading).
 
+% The BIG why. Hands back the proof for a generated route
+:- begin_tests(why,
+   [setup(setup_routes([
+       route(users_list,  get, '/users', [auth, paginated]),
+       route(public_ping, get, '/ping',  [])
+   ]))]).
+
+test(every_feature_gets_a_cited_step) :-
+    express_patterns:why(users_list, Steps),
+    memberchk("feature auth maps to middleware authenticate", Steps),
+    memberchk("feature paginated maps to middleware paginate", Steps).
+
+test(derivation_ends_with_the_generated_code) :-
+    express_patterns:why(users_list, Steps),
+    last(Steps, Conclusion),
+    express_patterns:generate_route(users_list, Code),
+    format(string(Expected), "therefore: ~w", [Code]),
+    Conclusion == Expected.
+
+test(no_features_still_explains) :-
+    express_patterns:why(public_ping, Steps),
+    Steps = [_RouteFact, _HandlerConvention, Conclusion],
+    Conclusion == "therefore: router.get('/ping', public_pingHandler);".
+
+:- end_tests(why).
+
 :- initialization(run_tests, main).
