@@ -103,4 +103,31 @@ test(unique_route_has_no_conflict) :-
 
 :- end_tests(lint_route_conflict).
 
+% Suggest/1 security check
+:- begin_tests(suggest,
+   [setup(setup_routes([
+       route(login,       post, '/login', [validated(login_schema)]),
+       route(users_list,  get,  '/users', [auth, paginated]),
+       route(user_create, post, '/users', [auth, validated(user_schema),
+                                           csrf, rate_limited])
+   ]))]).
+
+test(auth_path_without_rate_limit_suggests) :-
+    express_patterns:suggest(Suggestions),
+    memberchk(suggestion(add_rate_limit, login, _), Suggestions).
+
+test(mutating_route_without_csrf_suggests) :-
+    express_patterns:suggest(Suggestions),
+    memberchk(suggestion(add_csrf, login, _), Suggestions).
+
+test(fully_hardened_route_is_clean) :-
+    express_patterns:suggest(Suggestions),
+    \+ memberchk(suggestion(_, user_create, _), Suggestions).
+
+test(get_route_gets_no_csrf_suggestion) :-
+    express_patterns:suggest(Suggestions),
+    \+ memberchk(suggestion(add_csrf, users_list, _), Suggestions).
+
+:- end_tests(suggest).
+
 :- initialization(run_tests, main).
