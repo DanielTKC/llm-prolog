@@ -156,6 +156,22 @@ test(route_from_json_translates_features) :-
 
 :- end_tests(json_loading).
 
+% csrf
+:- begin_tests(csrf_middleware,
+   [setup(setup_routes([
+       route(user_create, post, '/users', [auth, validated(user_schema), csrf])
+   ]))]).
+
+test(csrf_expands_in_chain) :-
+    middleware_chain(user_create, Chain),
+    Chain == ['authenticate', 'validate(user_schema)', 'csrfProtection'].
+
+test(csrf_route_has_no_unknown_feature_warning) :-
+    express_patterns:lint(Warnings),
+    \+ memberchk(warning(unknown_feature, user_create, _), Warnings).
+
+:- end_tests(csrf_middleware).
+
 % The BIG why. Hands back the proof for a generated route
 :- begin_tests(why,
    [setup(setup_routes([

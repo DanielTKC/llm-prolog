@@ -24,6 +24,7 @@ middleware(file_upload, 'upload.single("file")').
 middleware(validated(Schema), Mw) :-
     format(atom(Mw), 'validate(~w)', [Schema]).
 middleware(admin_only, 'requireAdmin').
+middleware(csrf, 'csrfProtection').
 
 
 
