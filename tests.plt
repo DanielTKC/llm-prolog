@@ -130,4 +130,30 @@ test(get_route_gets_no_csrf_suggestion) :-
 
 :- end_tests(suggest).
 
+:- begin_tests(json_loading).
+
+test(plain_feature_passes_through) :-
+    express_patterns:feature_from_json(auth, F),
+    F == auth.
+
+test(parameterised_feature_builds_compound) :-
+    express_patterns:feature_from_json(_{validated: user_schema}, F),
+    F == validated(user_schema).
+
+test(route_from_json_builds_route) :-
+    express_patterns:route_from_json(
+        _{name: ping, method: get, path: '/ping', features: []},
+        R),
+    R == route(ping, get, '/ping', []).
+
+test(route_from_json_translates_features) :-
+    express_patterns:route_from_json(
+        _{name: user_create, method: post, path: '/users',
+          features: [auth, _{validated: user_schema}]},
+        R),
+    R == route(user_create, post, '/users',
+               [auth, validated(user_schema)]).
+
+:- end_tests(json_loading).
+
 :- initialization(run_tests, main).
