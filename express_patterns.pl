@@ -7,7 +7,8 @@
     generate_route/2,
     lint/1,
     suggest/1,
-    load_routes_json/1
+    load_routes_json/1,
+    why/2
 ]).
 
 :- dynamic route/4.
@@ -132,3 +133,24 @@ load_routes_json(File) :-
     forall(member(D, RouteDicts),
            ( route_from_json(D, Route),
              assert_route(Route) )).
+
+%  Tell me why, ain't nothing but a fact trace
+% Could not resist the BSB reference
+why(Name, Steps) :-
+    route(Name, Method, Path, Features),
+    format(string(RouteFact),
+           "route(~w, ~w, ~w, ~w) is a declared fact",
+           [Name, Method, Path, Features]),
+    findall(Step,
+            ( member(F, Features),
+              middleware(F, Mw),
+              format(string(Step),
+                     "feature ~w maps to middleware ~w", [F, Mw]) ),
+            FeatureSteps),
+    format(string(HandlerConvention),
+           "handler ~wHandler follows the <name>Handler convention",
+           [Name]),
+    generate_route(Name, Code),
+    format(string(Conclusion), "therefore: ~w", [Code]),
+    append([[RouteFact], FeatureSteps, [HandlerConvention], [Conclusion]],
+           Steps).
