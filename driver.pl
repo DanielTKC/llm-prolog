@@ -1,33 +1,47 @@
-% CLI driver: swipl driver.pl examples/routes.json
-% Loads routes from a JSON file, then prints the generated Express
-% code,
+% CLI driver: swipl driver.pl [--json] examples/routes.json
+% Prints the generated Express code, lint warnings, and security
+% suggestions. The exit code is the verdict: 0 means the spec is clean,
+% 1 means the linter has warnings, 2 means the spec never loaded.
+% Hooks and CI can gate on it.
 :- use_module(express_patterns).
-
-print_code :-
-    forall(route(Name, _, _, _),
-           ( generate_route(Name, Code),
-             format("~w~n", [Code]) )).
-
-print_warnings :-
-    lint(Warnings),
-    forall(member(warning(Type, Name, Msg), Warnings),
-           format("[!] ~w (~w): ~w~n", [Name, Type, Msg])).
-
-print_suggestions :-
-    suggest(Suggestions),
-    forall(member(suggestion(Type, Name, Msg), Suggestions),
-           format("[+] ~w (~w): ~w~n", [Name, Type, Msg])).
+:- use_module(library(json)).
 
 main :-
-    current_prolog_flag(argv, [File|_]),
+    current_prolog_flag(argv, Argv),
+    parse_args(Argv, Mode, File),
+    !,
     load_routes_json(File),
-    print_code,
-    nl,
-    print_warnings,
-    nl,
-    print_suggestions.
+    report_dict(Report),
+    print_report(Mode, Report),
+    verdict(Report).
 main :-
-    format("Usage: swipl driver.pl <routes.json>~n", []),
+    format(user_error, "Usage: swipl driver.pl [--json] <routes.json>~n", []),
+    halt(2).
+
+parse_args(['--json', File], json, File).
+parse_args([File], human, File) :-
+    File \== '--json'.
+
+print_report(json, Report) :-
+    json_write_dict(current_output, Report),
+    nl.
+print_report(human, Report) :-
+    forall(member(Code, Report.code),
+           format("~w~n", [Code])),
+    nl,
+    forall(member(W, Report.warnings),
+           format("[!] ~w (~w): ~w~n", [W.route, W.type, W.message])),
+    nl,
+    forall(member(S, Report.suggestions),
+           format("[+] ~w (~w): ~w~n", [S.route, S.type, S.message])).
+
+% Warnings block. Suggestions advise. That line matters: a gate that
+% nags about optional hardening trains everyone to bypass the gate.
+verdict(Report) :-
+    Report.warnings == [],
+    !,
+    halt(0).
+verdict(_) :-
     halt(1).
 
 :- initialization(main, main).
