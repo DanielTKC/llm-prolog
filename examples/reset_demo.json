@@ -1,0 +1,5 @@
+{
+  "routes": [
+    {"name": "password_reset", "method": "post", "path": "/password/reset", "features": ["auth", {"validated": "reset_schema"}, "csrf", "rate_limited"]}
+  ]
+}

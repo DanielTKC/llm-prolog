@@ -38,3 +38,6 @@ Temporary Items
 
 # End of https://www.toptal.com/developers/gitignore/api/macos
 
+# Local Claude Code permissions stay local; settings.json and hooks/ ship
+.claude/settings.local.json
+

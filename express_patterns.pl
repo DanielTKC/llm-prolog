@@ -26,6 +26,8 @@ middleware(validated(Schema), Mw) :-
     format(atom(Mw), 'validate(~w)', [Schema]).
 middleware(admin_only, 'requireAdmin').
 middleware(csrf, 'csrfProtection').
+middleware(rate_limited, 'rateLimit').
+
 
 
 

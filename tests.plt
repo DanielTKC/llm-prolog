@@ -188,6 +188,22 @@ test(csrf_route_has_no_unknown_feature_warning) :-
 
 :- end_tests(csrf_middleware).
 
+
+:- begin_tests(rate_limited_middleware,
+   [setup(setup_routes([
+       route(login, post, '/login', [rate_limited, validated(login_schema), csrf])
+   ]))]).
+
+test(rate_limited_expands_in_chain) :-
+    middleware_chain(login, Chain),
+    Chain == ['rateLimit', 'validate(login_schema)', 'csrfProtection'].
+
+test(rate_limited_is_not_an_unknown_feature) :-
+    express_patterns:lint(Warnings),
+    \+ memberchk(warning(unknown_feature, login, _), Warnings).
+
+:- end_tests(rate_limited_middleware).
+
 % The BIG why. Hands back the proof for a generated route
 :- begin_tests(why,
    [setup(setup_routes([
