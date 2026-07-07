@@ -8,7 +8,8 @@
     lint/1,
     suggest/1,
     load_routes_json/1,
-    why/2
+    why/2,
+    report_dict/1
 ]).
 
 :- dynamic route/4.
@@ -134,6 +135,24 @@ load_routes_json(File) :-
     forall(member(D, RouteDicts),
            ( route_from_json(D, Route),
              assert_route(Route) )).
+
+% report_dict/1 packages everything the program can say about the
+% current routes into one dict
+report_dict(_{code: Codes, warnings: Warnings, suggestions: Suggestions}) :-
+    findall(Code,
+            ( route(Name, _, _, _),
+              generate_route(Name, Code) ),
+            Codes),
+    lint(Lint),
+    maplist(warning_dict, Lint, Warnings),
+    suggest(Suggest),
+    maplist(suggestion_dict, Suggest, Suggestions).
+
+warning_dict(warning(Type, Name, Msg),
+             _{type: Type, route: Name, message: Msg}).
+
+suggestion_dict(suggestion(Type, Name, Msg),
+                _{type: Type, route: Name, message: Msg}).
 
 %  Tell me why, ain't nothing but a fact trace
 % Could not resist the BSB reference
