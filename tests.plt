@@ -1,7 +1,23 @@
 :- use_module(express_patterns).
+:- use_module(library(process)).
+
+% Where the repo lives, so subprocess tests work anywhere
+:- dynamic project_dir/1.
+:- prolog_load_context(directory, Dir), asserta(project_dir(Dir)).
+
 setup_routes(Routes) :-
     express_patterns:clear_routes,
     forall(member(R, Routes), express_patterns:assert_route(R)).
+
+% Run the driver as a subprocess and capture its exit status and stdout
+run_driver(Args, Status, Output) :-
+    project_dir(Dir),
+    process_create(path(swipl), Args,
+                   [cwd(Dir), stdout(pipe(Out)), stderr(null),
+                    process(PID)]),
+    read_string(Out, _, Output),
+    close(Out),
+    process_wait(PID, exit(Status)).
 
 :- begin_tests(middleware_chain,
    [setup(setup_routes([
@@ -197,5 +213,60 @@ test(no_features_still_explains) :-
     Conclusion == "therefore: router.get('/ping', public_pingHandler);".
 
 :- end_tests(why).
+
+% One report to rule them all: code, warnings, and suggestions in a single dict
+:- begin_tests(json_report,
+   [setup(setup_routes([
+       route(users_list,    get,  '/users',            [auth, paginated]),
+       route(upload_avatar, post, '/users/:id/avatar', [auth, file_upload])
+   ]))]).
+
+test(report_gathers_generated_code) :-
+    express_patterns:report_dict(R),
+    get_dict(code, R, Code),
+    Code == ["router.get('/users', authenticate, paginate, users_listHandler);",
+             "router.post('/users/:id/avatar', authenticate, upload.single(\"file\"), upload_avatarHandler);"].
+
+test(warnings_are_dicts_with_type_route_message, [nondet]) :-
+    express_patterns:report_dict(R),
+    get_dict(warnings, R, Warnings),
+    member(W, Warnings),
+    get_dict(type, W, missing_validation),
+    get_dict(route, W, upload_avatar),
+    get_dict(message, W, Msg),
+    string(Msg).
+
+test(suggestions_are_dicts_too, [nondet]) :-
+    express_patterns:report_dict(R),
+    get_dict(suggestions, R, Suggestions),
+    member(S, Suggestions),
+    get_dict(type, S, add_csrf),
+    get_dict(route, S, upload_avatar).
+
+:- end_tests(json_report).
+
+% The driver's exit code is the whole enforcement contract: 0 means the
+% dictator signed off, 1 means warnings, anything else means the spec
+% never even loaded.
+:- begin_tests(driver_cli).
+
+test(dirty_spec_exits_1) :-
+    run_driver(['driver.pl', 'examples/routes.json'], Status, _),
+    Status == 1.
+
+test(clean_spec_exits_0) :-
+    run_driver(['driver.pl', 'examples/clean_routes.json'], Status, _),
+    Status == 0.
+
+test(json_mode_emits_machine_readable_report) :-
+    run_driver(['driver.pl', '--json', 'examples/routes.json'], Status, Output),
+    Status == 1,
+    open_string(Output, Stream),
+    json_read_dict(Stream, Report),
+    close(Stream),
+    get_dict(code, Report, [_|_]),
+    get_dict(warnings, Report, [_|_]).
+
+:- end_tests(driver_cli).
 
 :- initialization(run_tests, main).
