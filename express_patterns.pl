@@ -8,6 +8,7 @@
     lint/1,
     suggest/1,
     load_routes_json/1,
+    route_from_json/2,
     why/2,
     report_dict/1
 ]).

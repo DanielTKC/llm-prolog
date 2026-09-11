@@ -368,4 +368,145 @@ test(json_mode_emits_machine_readable_report) :-
 
 :- end_tests(driver_cli).
 
+% The MCP server: the oracle answers its own phone. Handlers are pure
+% predicates over JSON-RPC dicts, so they get tested without stdio.
+:- use_module(mcp_server).
+
+demo_routes([
+    _{name: users_list,    method: get,  path: '/users',
+      features: [auth, paginated]},
+    _{name: upload_avatar, method: post, path: '/users/:id/avatar',
+      features: [auth, file_upload]},
+    _{name: login,         method: post, path: '/login',
+      features: [_{validated: login_schema}]}
+]).
+
+mcp_call(Id, Tool, Args, Reply) :-
+    mcp_handle(_{jsonrpc: '2.0', id: Id, method: 'tools/call',
+                 params: _{name: Tool, arguments: Args}},
+               Reply).
+
+tool_payload(Reply, Payload) :-
+    Reply.result.isError == false,
+    [Content] = Reply.result.content,
+    Content.type == "text",
+    open_string(Content.text, Stream),
+    json_read_dict(Stream, Payload),
+    close(Stream).
+
+:- begin_tests(mcp_protocol).
+
+test(initialize_answers_with_server_info) :-
+    mcp_handle(_{jsonrpc: '2.0', id: 1, method: initialize,
+                 params: _{protocolVersion: '2025-06-18', capabilities: _{}}},
+               Reply),
+    Reply.id == 1,
+    Reply.result.protocolVersion == '2025-06-18',
+    Reply.result.serverInfo.name == "prolog-oracle".
+
+test(initialized_notification_gets_no_reply) :-
+    mcp_handle(_{jsonrpc: '2.0', method: 'notifications/initialized'}, Reply),
+    Reply == none.
+
+test(tools_list_names_all_four_tools) :-
+    mcp_handle(_{jsonrpc: '2.0', id: 2, method: 'tools/list'}, Reply),
+    get_dict(tools, Reply.result, Tools),
+    findall(N, (member(T, Tools), get_dict(name, T, N)), Names),
+    msort(Names, [generate, lint, suggest, why]).
+
+test(unknown_method_gets_a_jsonrpc_error) :-
+    mcp_handle(_{jsonrpc: '2.0', id: 9, method: 'resources/list'}, Reply),
+    get_dict(error, Reply, Error),
+    Error.code == -32601.
+
+:- end_tests(mcp_protocol).
+
+:- begin_tests(mcp_tools).
+
+test(generate_tool_returns_code_lines) :-
+    demo_routes(Routes),
+    mcp_call(3, generate, _{routes: Routes}, Reply),
+    tool_payload(Reply, Payload),
+    get_dict(code, Payload, Codes),
+    memberchk("router.get('/users', authenticate, paginate, users_listHandler);",
+              Codes).
+
+test(lint_tool_flags_missing_validation) :-
+    demo_routes(Routes),
+    mcp_call(4, lint, _{routes: Routes}, Reply),
+    tool_payload(Reply, Payload),
+    get_dict(warnings, Payload, Warnings),
+    member(W, Warnings),
+    W.get(type) == "missing_validation",
+    W.get(route) == "upload_avatar",
+    !.
+
+test(suggest_tool_offers_rate_limiting) :-
+    demo_routes(Routes),
+    mcp_call(5, suggest, _{routes: Routes}, Reply),
+    tool_payload(Reply, Payload),
+    get_dict(suggestions, Payload, Suggestions),
+    member(S, Suggestions),
+    S.get(type) == "add_rate_limit",
+    S.get(route) == "login",
+    !.
+
+test(why_tool_traces_a_route) :-
+    demo_routes(Routes),
+    mcp_call(6, why, _{routes: Routes, kind: route, name: users_list}, Reply),
+    tool_payload(Reply, Payload),
+    get_dict(derivations, Payload, [Steps]),
+    last(Steps, Conclusion),
+    Conclusion == "therefore: router.get('/users', authenticate, paginate, users_listHandler);".
+
+test(why_tool_traces_a_warning) :-
+    demo_routes(Routes),
+    mcp_call(7, why,
+             _{routes: Routes, kind: warning,
+               name: upload_avatar, type: missing_validation},
+             Reply),
+    tool_payload(Reply, Payload),
+    get_dict(derivations, Payload, [Steps]),
+    last(Steps, Conclusion),
+    sub_string(Conclusion, 0, _, _, "therefore: [!] upload_avatar").
+
+test(why_tool_refuses_what_the_rules_cannot_prove, [nondet]) :-
+    demo_routes(Routes),
+    mcp_call(8, why,
+             _{routes: Routes, kind: warning,
+               name: login, type: missing_validation},
+             Reply),
+    Reply.result.isError == true,
+    [Content] = Reply.result.content,
+    sub_string(Content.text, _, _, _, "nothing to prove").
+
+:- end_tests(mcp_tools).
+
+% And once over the wire for real: spawn the server, speak JSON-RPC at
+% it through a pipe, and make sure it answers like an MCP server.
+:- begin_tests(mcp_stdio).
+
+test(server_answers_the_phone_over_stdio) :-
+    project_dir(Dir),
+    process_create(path(swipl), ['mcp_server.pl'],
+                   [cwd(Dir), stdin(pipe(In)), stdout(pipe(Out)),
+                    stderr(null), process(PID)]),
+    format(In, '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}~n', []),
+    flush_output(In),
+    read_line_to_string(Out, Line1),
+    format(In, '{"jsonrpc":"2.0","method":"notifications/initialized"}~n', []),
+    format(In, '{"jsonrpc":"2.0","id":2,"method":"tools/list"}~n', []),
+    flush_output(In),
+    read_line_to_string(Out, Line2),
+    close(In),
+    close(Out),
+    process_wait(PID, exit(0)),
+    open_string(Line1, S1), json_read_dict(S1, R1), close(S1),
+    R1.get(result).get(serverInfo).get(name) == "prolog-oracle",
+    open_string(Line2, S2), json_read_dict(S2, R2), close(S2),
+    get_dict(tools, R2.get(result), Tools),
+    length(Tools, 4).
+
+:- end_tests(mcp_stdio).
+
 :- initialization(run_tests, main).
