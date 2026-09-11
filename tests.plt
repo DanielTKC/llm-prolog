@@ -230,6 +230,89 @@ test(no_features_still_explains) :-
 
 :- end_tests(why).
 
+% why for warnings: the linter and the explainer must share clauses,
+% so a complaint can be traced the same way a generated route can.
+:- begin_tests(why_warnings,
+   [setup(setup_routes([
+       route(users_list,    get,  '/users',            [auth, paginated]),
+       route(user_create,   post, '/users',            [auth, validated(user_schema),
+                                                        csrf, rate_limited]),
+       route(upload_avatar, post, '/users/:id/avatar', [auth, file_upload]),
+       route(bad_route,     get,  '/bad',              [mystery_meat])
+   ]))]).
+
+test(warning_why_starts_from_the_route_fact) :-
+    express_patterns:why(warning(missing_validation, upload_avatar), Steps),
+    Steps = [RouteFact|_],
+    RouteFact == "route(upload_avatar, post, /users/:id/avatar, [auth,file_upload]) is a declared fact".
+
+test(warning_why_cites_each_rule_condition) :-
+    express_patterns:why(warning(missing_validation, upload_avatar), Steps),
+    memberchk("post is a mutating method, so requests carry a body", Steps),
+    memberchk("no validated(_) feature appears in [auth,file_upload]", Steps).
+
+test(warning_derivation_ends_with_the_report_line) :-
+    express_patterns:lint(Warnings),
+    memberchk(warning(missing_validation, upload_avatar, Msg), Warnings),
+    express_patterns:why(warning(missing_validation, upload_avatar), Steps),
+    last(Steps, Conclusion),
+    format(string(Expected), "therefore: [!] ~w (~w): ~w",
+           [upload_avatar, missing_validation, Msg]),
+    Conclusion == Expected.
+
+test(unknown_feature_why_names_the_orphan) :-
+    express_patterns:why(warning(unknown_feature, bad_route), Steps),
+    memberchk("feature mystery_meat matches no middleware/2 clause", Steps).
+
+test(a_warning_that_does_not_hold_cannot_be_explained, [fail]) :-
+    express_patterns:why(warning(missing_validation, user_create), _).
+
+:- end_tests(why_warnings).
+
+:- begin_tests(why_route_conflict,
+   [setup(setup_routes([
+       route(users_list,  get, '/users', [auth]),
+       route(users_index, get, '/users', [auth])
+   ]))]).
+
+test(conflict_why_cites_both_route_facts, [nondet]) :-
+    express_patterns:why(warning(route_conflict, users_index), Steps),
+    memberchk("route(users_index, get, /users, [auth]) is a declared fact", Steps),
+    memberchk("route(users_list, get, /users, [auth]) is also a declared fact", Steps).
+
+:- end_tests(why_route_conflict).
+
+% why for suggestions: same machine, pointed at the advice.
+:- begin_tests(why_suggestions,
+   [setup(setup_routes([
+       route(login,      post, '/login', [validated(login_schema)]),
+       route(users_list, get,  '/users', [auth, paginated])
+   ]))]).
+
+test(rate_limit_why_cites_the_auth_path_clue, [nondet]) :-
+    express_patterns:why(suggestion(add_rate_limit, login), Steps),
+    memberchk("path /login contains \"login\", so auth_path(/login) holds", Steps),
+    memberchk("rate_limited is not among [validated(login_schema)]", Steps).
+
+test(csrf_why_cites_mutating_method_and_absence) :-
+    express_patterns:why(suggestion(add_csrf, login), Steps),
+    memberchk("post is a mutating method, so requests carry a body", Steps),
+    memberchk("csrf is not among [validated(login_schema)]", Steps).
+
+test(suggestion_derivation_ends_with_the_report_line) :-
+    express_patterns:suggest(Suggestions),
+    memberchk(suggestion(add_rate_limit, login, Msg), Suggestions),
+    express_patterns:why(suggestion(add_rate_limit, login), Steps),
+    last(Steps, Conclusion),
+    format(string(Expected), "therefore: [+] ~w (~w): ~w",
+           [login, add_rate_limit, Msg]),
+    Conclusion == Expected.
+
+test(advice_that_does_not_apply_cannot_be_explained, [fail]) :-
+    express_patterns:why(suggestion(add_csrf, users_list), _).
+
+:- end_tests(why_suggestions).
+
 % One report to rule them all: code, warnings, and suggestions in a single dict
 :- begin_tests(json_report,
    [setup(setup_routes([

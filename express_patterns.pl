@@ -58,29 +58,57 @@ mutating_method(patch).
 
 has_validation(Features) :- member(validated(_), Features).
 
+% Every lint rule is a traced rule: warn_why/4 derives the reasoning
+% steps and the message from the same clause, so the report and the
+% proof cannot drift apart. warn/3 is just warn_why/4 with the steps
+% thrown away.
+warn(Type, Name, Msg) :-
+    warn_why(Type, Name, _Steps, Msg).
 
-warn(missing_validation, Name, Msg) :-
+route_fact_step(Name, Method, Path, Features, Step) :-
+    format(string(Step),
+           "route(~w, ~w, ~w, ~w) is a declared fact",
+           [Name, Method, Path, Features]).
+
+mutating_step(Method, Step) :-
+    format(string(Step),
+           "~w is a mutating method, so requests carry a body",
+           [Method]).
+
+warn_why(missing_validation, Name, [RouteFact, MutStep, Absence], Msg) :-
     route(Name, Method, Path, Features),
     mutating_method(Method),
     \+ has_validation(Features),
+    route_fact_step(Name, Method, Path, Features, RouteFact),
+    mutating_step(Method, MutStep),
+    format(string(Absence),
+           "no validated(_) feature appears in ~w", [Features]),
     format(string(Msg),
            "~w ~w has no validation; ~w bodies should be schema-checked",
            [Method, Path, Method]).
 
-
-warn(unknown_feature, Name, Msg) :-
-    route(Name, _, _, Features),
+warn_why(unknown_feature, Name, [RouteFact, Orphan], Msg) :-
+    route(Name, Method, Path, Features),
     member(F, Features),
     \+ middleware(F, _),
+    route_fact_step(Name, Method, Path, Features, RouteFact),
+    format(string(Orphan),
+           "feature ~w matches no middleware/2 clause", [F]),
     format(string(Msg),
            "feature ~w has no middleware mapping and would be silently dropped",
            [F]).
 
-
-warn(route_conflict, Name, Msg) :-
-    route(Name, Method, Path, _),
-    route(Other, Method, Path, _),
+warn_why(route_conflict, Name, [RouteFact, OtherFact, Clash], Msg) :-
+    route(Name, Method, Path, Features),
+    route(Other, Method, Path, OtherFeatures),
     Name @< Other,
+    route_fact_step(Name, Method, Path, Features, RouteFact),
+    format(string(OtherFact),
+           "route(~w, ~w, ~w, ~w) is also a declared fact",
+           [Other, Method, Path, OtherFeatures]),
+    format(string(Clash),
+           "both claim ~w ~w, so one handler will never be reached",
+           [Method, Path]),
     format(string(Msg),
            "~w ~w also defined by ~w",
            [Method, Path, Other]).
@@ -91,25 +119,43 @@ suggest(Suggestions) :-
             suggest_one(Type, Name, Msg),
             Suggestions).
 
-% Paths that look like authentication endpoints.
-auth_path(Path) :- sub_atom(Path, _, _, _, login).
-auth_path(Path) :- sub_atom(Path, _, _, _, auth).
-auth_path(Path) :- sub_atom(Path, _, _, _, password).
+% Paths that look like authentication endpoints. auth_word/1 names the
+% clue so a trace can cite which word gave the path away.
+auth_word(login).
+auth_word(auth).
+auth_word(password).
+
+auth_path(Path) :- auth_word(Word), sub_atom(Path, _, _, _, Word).
+
+% Suggestions are traced rules too, same deal as warn/3.
+suggest_one(Type, Name, Msg) :-
+    suggest_why(Type, Name, _Steps, Msg).
 
 % rate limiting is cheap.
-suggest_one(add_rate_limit, Name, Msg) :-
-    route(Name, _, Path, Features),
-    auth_path(Path),
+suggest_why(add_rate_limit, Name, [RouteFact, Clue, Absence], Msg) :-
+    route(Name, Method, Path, Features),
+    auth_word(Word),
+    sub_atom(Path, _, _, _, Word),
     \+ member(rate_limited, Features),
+    route_fact_step(Name, Method, Path, Features, RouteFact),
+    format(string(Clue),
+           "path ~w contains \"~w\", so auth_path(~w) holds",
+           [Path, Word, Path]),
+    format(string(Absence),
+           "rate_limited is not among ~w", [Features]),
     format(string(Msg),
            "~w looks like an auth endpoint; add rate_limited to slow attacks",
            [Path]).
 
 % Changing routes reachable from a browser should carry CSRF protection
-suggest_one(add_csrf, Name, Msg) :-
+suggest_why(add_csrf, Name, [RouteFact, MutStep, Absence], Msg) :-
     route(Name, Method, Path, Features),
     mutating_method(Method),
     \+ member(csrf, Features),
+    route_fact_step(Name, Method, Path, Features, RouteFact),
+    mutating_step(Method, MutStep),
+    format(string(Absence),
+           "csrf is not among ~w", [Features]),
     format(string(Msg),
            "~w ~w changes state from a browser; add csrf protection",
            [Method, Path]).
@@ -176,3 +222,19 @@ why(Name, Steps) :-
     format(string(Conclusion), "therefore: ~w", [Code]),
     append([[RouteFact], FeatureSteps, [HandlerConvention], [Conclusion]],
            Steps).
+
+% why also answers for the linter and the suggester. The reasoning
+% steps come from the same traced rule that raised the finding, and the
+% conclusion is the exact line the driver prints, so an explanation can
+% only exist where the finding actually holds.
+why(warning(Type, Name), Steps) :-
+    warn_why(Type, Name, Reasoning, Msg),
+    format(string(Conclusion), "therefore: [!] ~w (~w): ~w",
+           [Name, Type, Msg]),
+    append(Reasoning, [Conclusion], Steps).
+
+why(suggestion(Type, Name), Steps) :-
+    suggest_why(Type, Name, Reasoning, Msg),
+    format(string(Conclusion), "therefore: [+] ~w (~w): ~w",
+           [Name, Type, Msg]),
+    append(Reasoning, [Conclusion], Steps).
